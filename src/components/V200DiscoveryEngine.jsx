@@ -1,4 +1,3 @@
-────────────────────────────────────────────────────────────────—───────────────────────────────────────────────🟢🚀💎×…▲▼⚡·●·—·…↻🚀→→———————————···×✓✗₹—₹——✓✗import { useState, useMemo, useEffect, useCallback } from 'react'
 import { fetchV200Stocks, fetchLastPipelineRun } from '../lib/supabase.js'
 
 // ─── Mock data — only used if Supabase fetch fails ──────────────────────────
