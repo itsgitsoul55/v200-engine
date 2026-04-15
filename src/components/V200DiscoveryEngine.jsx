@@ -49,6 +49,47 @@ const s = {
   passBd:    (p) => p?'rgba(34,197,94,0.25)':'rgba(239,68,68,0.25)',
 }
 
+function NotificationBanner({ stocks, dismissed, onDismiss }) {
+  const v200 = stocks.filter(s => s.in_v200)
+  const buyStocks = v200.filter(s => s.signal === 'BUY')
+  const breakoutStocks = v200.filter(s => s.stage2 && s.delivery_spike)
+  const deepDiscountStocks = v200.filter(s => (s.recovery_gap_pct ?? 0) < -20)
+
+  const alerts = [
+    { type: 'buy', stocks: buyStocks, color: 'var(--green)', bg: 'var(--green-bg)', border: 'rgba(34,197,94,0.25)', label: 'BUY Signal' },
+    { type: 'breakout', stocks: breakoutStocks, color: 'var(--amber)', bg: 'var(--amber-bg)', border: 'rgba(245,158,11,0.25)', label: 'Stage2 + Delivery Breakout' },
+    { type: 'deepDiscount', stocks: deepDiscountStocks, color: 'var(--blue)', bg: 'var(--blue-bg)', border: 'rgba(59,130,246,0.25)', label: 'Deep Discount (>20% below Sep\'24)' },
+  ].filter(a => a.stocks.length > 0 && !dismissed.includes(a.type))
+
+  if (alerts.length === 0) return null
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+      {alerts.map(a => (
+        <div key={a.type} style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '10px 14px', borderRadius: 8,
+          background: a.bg, border: `1px solid ${a.border}`,
+          fontSize: 13, color: a.color,
+        }}>
+          <span>
+            <strong>{a.label}:</strong>{' '}
+            {a.stocks.map(s => s.symbol).join(', ')}
+          </span>
+          <button
+            onClick={() => onDismiss(a.type)}
+            style={{
+              background: 'none', border: 'none', color: a.color,
+              fontSize: 16, lineHeight: 1, cursor: 'pointer', marginLeft: 12,
+              opacity: 0.7,
+            }}
+          >×</button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function Spinner() {
   return (
     <div style={{padding:60,textAlign:'center'}}>
@@ -81,6 +122,7 @@ export default function V200DiscoveryEngine() {
   const [selected,    setSelected]    = useState(null)
   const [onlyV200,    setOnlyV200]    = useState(false)
   const [onlyS2,      setOnlyS2]      = useState(false)
+  const [dismissed,   setDismissed]   = useState([])
 
   const load = useCallback(async () => {
     try {
@@ -140,6 +182,8 @@ export default function V200DiscoveryEngine() {
 
   return (
     <div style={{color:'var(--text-primary)'}}>
+
+      <NotificationBanner stocks={stocks} dismissed={dismissed} onDismiss={(type) => setDismissed(prev => [...prev, type])} />
 
       {/* Header */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20,flexWrap:'wrap',gap:12}}>
@@ -229,7 +273,7 @@ export default function V200DiscoveryEngine() {
                   ['Score','quality_score'],['ROCE','roce'],['D/E','de_ratio'],
                   ['Rev CAGR','rev_cagr_3yr'],['Promoter','promoter_pct'],
                   ['Pledge','pledge_pct'],['Prof Yrs','profitable_yrs'],
-                  ["vs Sep'24",'recovery_gap_pct'],['Tags',null],
+                  ["vs Sep'24",'recovery_gap_pct'],['Signal',null],['Tags',null],
                 ].map(([label,col])=>(
                   <th key={label} onClick={col?()=>toggleSort(col):undefined} style={{
                     ...s.cell, fontWeight:500, fontSize:11,
@@ -244,7 +288,7 @@ export default function V200DiscoveryEngine() {
             </thead>
             <tbody>
               {filtered.length===0
-                ? <tr><td colSpan={12} style={{padding:40,textAlign:'center',fontSize:13,color:'var(--text-faint)'}}>No stocks match current filters</td></tr>
+                ? <tr><td colSpan={13} style={{padding:40,textAlign:'center',fontSize:13,color:'var(--text-faint)'}}>No stocks match current filters</td></tr>
                 : filtered.map((stock,i)=>{
                   const gap = stock.recovery_gap_pct
                   const isSel = selected?.symbol===stock.symbol
@@ -276,6 +320,9 @@ export default function V200DiscoveryEngine() {
                       <td style={{...s.cell,color:(stock.profitable_yrs||0)>=5?'var(--green)':'var(--red)'}}>{stock.profitable_yrs!=null?`${stock.profitable_yrs}/7`:'—'}</td>
                       <td style={{...s.cell,fontWeight:600,color:s.gapColor(gap),whiteSpace:'nowrap'}}>
                         {gap!=null?`${gap>=0?'+':''}${gap.toFixed(1)}%`:'—'}
+                      </td>
+                      <td style={{...s.cell,fontWeight:600,color:stock.signal==='BUY'?'var(--green)':stock.signal==='HOLD'?'var(--amber)':'var(--red)'}}>
+                        {stock.signal||'—'}
                       </td>
                       <td style={s.cell}>
                         <div style={{display:'flex',gap:3,flexWrap:'wrap'}}>
