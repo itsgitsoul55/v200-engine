@@ -1,11 +1,19 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
+// quality_score can be 0-6 (count) from n8n pipeline, or 0-100 (percentage) from mock data
+// Normalize to percentage for consistent display
+function normalizeScore(raw) {
+  if (raw == null) return 0;
+  // If stored as count (0-6), convert to percentage
+  if (raw <= 6) return Math.round(raw * 100 / 6);
+  return raw; // already percentage
+}
+
 function computeStormScore(stock) {
   const gap = stock.recovery_gap_pct ?? 0;
-  const qScore = stock.quality_score ?? 0;
+  const qScore = normalizeScore(stock.quality_score);
   const sector = stock.sector || '';
-  if (qScore < 4 && qScore > 0) return 0;
   if (qScore === 0) return 0;
   let score = 0;
   if (gap <= -30) score += 40;
@@ -13,9 +21,10 @@ function computeStormScore(stock) {
   else if (gap <= -15) score += 15;
   else if (gap <= -5) score += 8;
   else if (gap <= 0) score += 3;
-  if (qScore >= 6 || qScore >= 100) score += 30;
-  else if (qScore >= 5 || qScore >= 83) score += 20;
-  else if (qScore >= 4 || qScore >= 67) score += 10;
+  if (qScore >= 100) score += 30;
+  else if (qScore >= 83) score += 20;
+  else if (qScore >= 67) score += 10;
+  else if (qScore >= 50) score += 5;
   const hiSectors = ['Information Technology', 'Consumer Discretionary', 'Chemicals', 'Electricals', 'Retail'];
   if (hiSectors.some(s => sector.includes(s))) score += 20;
   if (stock.stage2) score += 10;
@@ -39,20 +48,24 @@ export default function GlobalStormVictims() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [sortBy, setSortBy] = useState('storm_score');
   const [lastUpdate, setLastUpdate] = useState(null);
+  const [error, setError] = useState(null);
 
   async function load() {
     setLoading(true);
+    setError(null);
     try {
       const { data, error } = await supabase.from('v200_stocks').select('*').order('quality_score', { ascending: false });
       if (error) throw error;
       const enriched = (data || []).map(s => ({
         ...s,
+        quality_score_pct: normalizeScore(s.quality_score),
         storm_score: computeStormScore(s),
         status: getStatus(s.recovery_gap_pct)
-      })).filter(s => (s.quality_score ?? 0) >= 4 || (s.quality_score ?? 0) >= 67);
+      }));
       setStocks(enriched);
       setLastUpdate(new Date());
     } catch (e) {
+      setError(e.message || 'Failed to load data');
       setStocks([]);
     }
     setLoading(false);
@@ -69,7 +82,7 @@ export default function GlobalStormVictims() {
     .sort((a, b) => {
       if (sortBy === 'storm_score') return (b.storm_score ?? 0) - (a.storm_score ?? 0);
       if (sortBy === 'gap') return (a.recovery_gap_pct ?? 0) - (b.recovery_gap_pct ?? 0);
-      if (sortBy === 'quality') return (b.quality_score ?? 0) - (a.quality_score ?? 0);
+      if (sortBy === 'quality') return (b.quality_score_pct ?? 0) - (a.quality_score_pct ?? 0);
       return 0;
     });
 
@@ -84,6 +97,13 @@ export default function GlobalStormVictims() {
           ↻ Sync Most Updated Data
         </button>
       </div>
+
+      {error && (
+        <div className="bg-red-900/30 border border-red-500/40 rounded-xl p-4 text-red-400 text-sm">
+          ⚠ Supabase error: {error}
+        </div>
+      )}
+
       <div className="grid grid-cols-4 gap-4">
         {[{ label: 'Total Tracked', val: stocks.length, color: 'text-blue-400' }, { label: 'Victims', val: stocks.filter(s => (s.recovery_gap_pct ?? 0) <= -10).length, color: 'text-red-400' }, { label: 'Recovered', val: stocks.filter(s => (s.recovery_gap_pct ?? 0) > 0).length, color: 'text-green-400' }, { label: 'BUY Signals', val: stocks.filter(s => s.signal === 'BUY').length, color: 'text-emerald-400' }].map(c => (
           <div key={c.label} className="bg-slate-800/40 rounded-xl p-4 text-center border border-slate-700/50">
@@ -92,12 +112,18 @@ export default function GlobalStormVictims() {
           </div>
         ))}
       </div>
+
       <div className="flex gap-4 p-4 bg-slate-900/50 rounded-xl border border-slate-800">
         <select value={sectorFilter} onChange={e => setSectorFilter(e.target.value)} className="bg-slate-800 text-slate-200 text-xs px-3 py-2.5 rounded-lg border border-slate-700">{sectors.map(s => <option key={s}>{s}</option>)}</select>
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="bg-slate-800 text-slate-200 text-xs px-3 py-2.5 rounded-lg border border-slate-700">{statusOptions.map(s => <option key={s}>{s}</option>)}</select>
         <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="bg-slate-800 text-slate-200 text-xs px-3 py-2.5 rounded-lg border border-slate-700"><option value="storm_score">Storm Score</option><option value="gap">Gap vs Sep'24</option><option value="quality">Quality Score</option></select>
       </div>
-      {loading ? <div className="text-center py-20 text-slate-400 font-bold">LOADING LATEST DATA...</div> : filtered.length === 0 ? <div className="text-center py-20 text-slate-400">No stocks matching quality/filters found.</div> : (
+
+      {loading ? <div className="text-center py-20 text-slate-400 font-bold">LOADING LATEST DATA...</div> : filtered.length === 0 ? (
+        <div className="text-center py-20 text-slate-400">
+          {stocks.length === 0 ? 'No stocks in database — run n8n pipeline first.' : 'No stocks matching filters.'}
+        </div>
+      ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/20">
           <table className="w-full text-sm">
             <thead className="bg-slate-800/50 text-slate-400 font-black text-[10px]">
@@ -111,7 +137,7 @@ export default function GlobalStormVictims() {
                   <td className="py-4 px-6 text-right font-black text-blue-400">{s.storm_score}</td>
                   <td className={`py-4 px-6 text-right font-black ${ (s.recovery_gap_pct ?? 0) < 0 ? 'text-red-400' : 'text-emerald-400' }`}>{s.recovery_gap_pct != null ? `${s.recovery_gap_pct > 0 ? '+' : ''}${s.recovery_gap_pct.toFixed(1)}%` : '—'}</td>
                   <td className="py-4 px-6"><span className={`px-2 py-1 rounded-md text-[9px] font-black border ${s.status.color}`}>{s.status.label.toUpperCase()}</span></td>
-                  <td className="py-4 px-6 text-right text-slate-300 font-bold">{s.quality_score}</td>
+                  <td className="py-4 px-6 text-right text-slate-300 font-bold">{s.quality_score_pct}%</td>
                   <td className="py-4 px-6">{s.signal ? <span className="px-2 py-1 rounded text-[10px] font-black bg-emerald-500/20 text-emerald-400">{s.signal}</span> : '—'}</td>
                 </tr>
               ))}
@@ -119,8 +145,9 @@ export default function GlobalStormVictims() {
           </table>
         </div>
       )}
+
       {selected && (
-        <div className="bg-slate-800/90 rounded-2xl p-6 border border-indigo-500/40 shadow-2xl animate-in fade-in slide-in-from-bottom-4">
+        <div className="bg-slate-800/90 rounded-2xl p-6 border border-indigo-500/40 shadow-2xl">
           <div className="flex justify-between items-start mb-6">
             <div><h3 className="font-black text-white text-2xl">{selected.symbol}</h3><p className="text-slate-400 text-xs mt-1">{selected.name} • {selected.sector}</p></div>
             <button onClick={() => setSelected(null)} className="text-slate-500 hover:text-white text-lg">✕</button>
