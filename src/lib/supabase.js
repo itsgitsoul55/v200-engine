@@ -5,22 +5,29 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJ
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
 
+// quality_score is stored as 0-6 count in Supabase; normalize to 0-100 pct for UI
+function normalizeQScore(raw) {
+  if (raw == null) return 0
+  if (raw <= 6) return Math.round(raw / 6 * 100)
+  return raw
+}
+
 export async function fetchV200Stocks() {
-    const { data, error } = await supabase
-      .from('v200_stocks')
-      .select('*')
-      .order('quality_score', { ascending: false })
-    if (error) throw error
-    return data || []
+  const { data, error } = await supabase
+    .from('v200_stocks')
+    .select('*')
+    .order('quality_score', { ascending: false })
+  if (error) throw error
+  return (data || []).map(s => ({ ...s, quality_score: normalizeQScore(s.quality_score) }))
 }
 
 export async function fetchLastPipelineRun() {
-    const { data, error } = await supabase
-      .from('pipeline_runs')
-      .select('*')
-      .order('run_at', { ascending: false })
-      .limit(1)
-      .single()
-    if (error) return null
-    return data
+  const { data, error } = await supabase
+    .from('pipeline_runs')
+    .select('*')
+    .order('run_at', { ascending: false })
+    .limit(1)
+    .single()
+  if (error) return null
+  return data
 }
