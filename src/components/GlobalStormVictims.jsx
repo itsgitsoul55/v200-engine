@@ -131,7 +131,7 @@ export default function GlobalStormVictims() {
             </thead>
             <tbody>
               {filtered.map(s => (
-                <tr key={s.symbol} onClick={() => setSelected(selected?.symbol === s.symbol ? null : s)} className={`border-b border-slate-800/50 cursor-pointer hover:bg-indigo-500/10 transition-colors ${selected?.symbol === s.symbol ? 'bg-indigo-500/20' : ''}`}>
+                <tr key={s.symbol} onClick={() => { const newSel = selected?.symbol === s.symbol ? null : s; setSelected(newSel); if(newSel) window.dispatchEvent(new CustomEvent('ai-insight-open', {detail: newSel})); }} className={`border-b border-slate-800/50 cursor-pointer hover:bg-indigo-500/10 transition-colors ${selected?.symbol === s.symbol ? 'bg-indigo-500/20' : ''}`}>
                   <td className="py-4 px-6"><div className="font-bold text-white">{s.symbol}</div><div className="text-slate-500 text-[10px] font-medium">{s.name}</div></td>
                   <td className="py-4 px-6 text-slate-400 text-xs">{s.sector}</td>
                   <td className="py-4 px-6 text-right font-black text-blue-400">{s.storm_score}</td>
