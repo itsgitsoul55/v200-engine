@@ -96,7 +96,7 @@ export default function QualityCompounder() {
             </thead>
             <tbody>
               {filtered.map(s => (
-                <tr key={s.symbol} onClick={() => setSelected(selected?.symbol === s.symbol ? null : s)}
+                <tr key={s.symbol} onClick={() => { const newSel = selected?.symbol === s.symbol ? null : s; setSelected(newSel); if(newSel) window.dispatchEvent(new CustomEvent('ai-insight-open', {detail: newSel})); }}
                   className={`border-b border-slate-800 cursor-pointer hover:bg-slate-800 transition-colors ${selected?.symbol === s.symbol ? 'bg-slate-800' : ''}`}>
                   <td className="py-2 px-2">
                     <div className="font-medium text-slate-100">{s.symbol}</div>
