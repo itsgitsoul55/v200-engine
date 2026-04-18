@@ -294,7 +294,7 @@ export default function V200DiscoveryEngine() {
                   const isSel = selected?.symbol===stock.symbol
                   return (
                     <tr key={stock.symbol}
-                      onClick={()=>setSelected(sel=>sel?.symbol===stock.symbol?null:stock)}
+                      onClick={()=>{ const newSel = selected?.symbol===stock.symbol?null:stock; setSelected(newSel); if(newSel) window.dispatchEvent(new CustomEvent('ai-insight-open',{detail:newSel})); }}
                       style={{
                         borderBottom:'1px solid var(--border)', cursor:'pointer',
                         background: isSel?'rgba(0,212,170,0.06)':i%2===0?'transparent':'rgba(255,255,255,0.015)',
