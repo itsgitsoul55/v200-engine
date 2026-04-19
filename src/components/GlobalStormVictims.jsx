@@ -1,18 +1,15 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
-// quality_score can be 0-6 (count) from n8n pipeline, or 0-100 (percentage) from mock data
-// Normalize to percentage for consistent display
-function normalizeScore(raw) {
+function normQ(raw) {
   if (raw == null) return 0;
-  // If stored as count (0-6), convert to percentage
-  if (raw <= 6) return Math.round(raw * 100 / 6);
-  return raw; // already percentage
+  if (raw <= 6) return Math.round(raw / 6 * 100);
+  return raw;
 }
 
 function computeStormScore(stock) {
   const gap = stock.recovery_gap_pct ?? 0;
-  const qScore = normalizeScore(stock.quality_score);
+  const qScore = normQ(stock.quality_score);
   const sector = stock.sector || '';
   if (qScore === 0) return 0;
   let score = 0;
@@ -25,9 +22,12 @@ function computeStormScore(stock) {
   else if (qScore >= 83) score += 20;
   else if (qScore >= 67) score += 10;
   else if (qScore >= 50) score += 5;
-  const hiSectors = ['Information Technology', 'Consumer Discretionary', 'Chemicals', 'Electricals', 'Retail'];
+  // Broader sector matching for actual DB sector names
+  const hiSectors = ['IT', 'Tech', 'Consumer', 'Chemicals', 'Electricals', 'Retail', 'Electronics'];
   if (hiSectors.some(s => sector.includes(s))) score += 20;
   if (stock.stage2) score += 10;
+  if (stock.signal === 'BUY') score += 15;
+  else if (stock.signal === 'HOLD' || stock.signal === 'WAIT') score += 5;
   return score;
 }
 
@@ -38,6 +38,13 @@ function getStatus(gap) {
   if (gap <= 0) return { label: 'Near Recovery', color: 'text-yellow-400' };
   if (gap <= 15) return { label: 'Recovered', color: 'text-green-400' };
   return { label: 'Full Recovery', color: 'text-emerald-400' };
+}
+
+function signalBadge(sig) {
+  if (sig === 'BUY') return 'bg-emerald-500/20 text-emerald-400';
+  if (sig === 'HOLD' || sig === 'WAIT') return 'bg-amber-500/20 text-amber-400';
+  if (sig === 'AVOID') return 'bg-red-500/20 text-red-400';
+  return 'bg-slate-700 text-slate-400';
 }
 
 export default function GlobalStormVictims() {
@@ -58,7 +65,7 @@ export default function GlobalStormVictims() {
       if (error) throw error;
       const enriched = (data || []).map(s => ({
         ...s,
-        quality_score_pct: normalizeScore(s.quality_score),
+        quality_score_pct: normQ(s.quality_score),
         storm_score: computeStormScore(s),
         status: getStatus(s.recovery_gap_pct)
       }));
@@ -75,7 +82,6 @@ export default function GlobalStormVictims() {
 
   const sectors = ['All', ...new Set(stocks.map(s => s.sector).filter(Boolean))];
   const statusOptions = ['All', 'Deep Victim', 'Victim', 'Near Recovery', 'Recovered', 'Full Recovery'];
-
   const filtered = stocks
     .filter(s => sectorFilter === 'All' || s.sector === sectorFilter)
     .filter(s => statusFilter === 'All' || s.status.label === statusFilter)
@@ -93,21 +99,20 @@ export default function GlobalStormVictims() {
           <h2 className="text-xl font-bold text-white">Global Storm Victims</h2>
           {lastUpdate && <p className="text-[10px] text-slate-500 font-medium">Last Sync: {lastUpdate.toLocaleTimeString()}</p>}
         </div>
-        <button onClick={load} className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg font-bold">
-          ↻ Sync Most Updated Data
-        </button>
+        <button onClick={load} className="text-xs bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-lg font-bold">Sync</button>
       </div>
 
-      {error && (
-        <div className="bg-red-900/30 border border-red-500/40 rounded-xl p-4 text-red-400 text-sm">
-          ⚠ Supabase error: {error}
-        </div>
-      )}
+      {error && <div className="bg-red-900/30 border border-red-500/40 rounded-xl p-4 text-red-400 text-sm">Supabase error: {error}</div>}
 
       <div className="grid grid-cols-4 gap-4">
-        {[{ label: 'Total Tracked', val: stocks.length, color: 'text-blue-400' }, { label: 'Victims', val: stocks.filter(s => (s.recovery_gap_pct ?? 0) <= -10).length, color: 'text-red-400' }, { label: 'Recovered', val: stocks.filter(s => (s.recovery_gap_pct ?? 0) > 0).length, color: 'text-green-400' }, { label: 'BUY Signals', val: stocks.filter(s => s.signal === 'BUY').length, color: 'text-emerald-400' }].map(c => (
+        {[
+          { label: 'Total Tracked', val: stocks.length, color: 'text-blue-400' },
+          { label: 'Victims', val: stocks.filter(s => (s.recovery_gap_pct ?? 0) <= -10).length, color: 'text-red-400' },
+          { label: 'Recovered', val: stocks.filter(s => (s.recovery_gap_pct ?? 0) > 0).length, color: 'text-green-400' },
+          { label: 'BUY Signals', val: stocks.filter(s => s.signal === 'BUY').length, color: 'text-emerald-400' }
+        ].map(c => (
           <div key={c.label} className="bg-slate-800/40 rounded-xl p-4 text-center border border-slate-700/50">
-            <div className={`text-2xl font-black ${c.color}`}>{c.val}</div>
+            <div className={'text-2xl font-black ' + c.color}>{c.val}</div>
             <div className="text-slate-400 text-[10px] uppercase font-bold mt-1">{c.label}</div>
           </div>
         ))}
@@ -116,29 +121,49 @@ export default function GlobalStormVictims() {
       <div className="flex gap-4 p-4 bg-slate-900/50 rounded-xl border border-slate-800">
         <select value={sectorFilter} onChange={e => setSectorFilter(e.target.value)} className="bg-slate-800 text-slate-200 text-xs px-3 py-2.5 rounded-lg border border-slate-700">{sectors.map(s => <option key={s}>{s}</option>)}</select>
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="bg-slate-800 text-slate-200 text-xs px-3 py-2.5 rounded-lg border border-slate-700">{statusOptions.map(s => <option key={s}>{s}</option>)}</select>
-        <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="bg-slate-800 text-slate-200 text-xs px-3 py-2.5 rounded-lg border border-slate-700"><option value="storm_score">Storm Score</option><option value="gap">Gap vs Sep'24</option><option value="quality">Quality Score</option></select>
+        <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="bg-slate-800 text-slate-200 text-xs px-3 py-2.5 rounded-lg border border-slate-700">
+          <option value="storm_score">Storm Score</option>
+          <option value="gap">Gap vs Sep 24</option>
+          <option value="quality">Quality Score</option>
+        </select>
       </div>
 
-      {loading ? <div className="text-center py-20 text-slate-400 font-bold">LOADING LATEST DATA...</div> : filtered.length === 0 ? (
+      {loading ? (
+        <div className="text-center py-20 text-slate-400 font-bold">LOADING LATEST DATA...</div>
+      ) : filtered.length === 0 ? (
         <div className="text-center py-20 text-slate-400">
-          {stocks.length === 0 ? 'No stocks in database — run n8n pipeline first.' : 'No stocks matching filters.'}
+          {stocks.length === 0 ? 'No stocks in database - run n8n pipeline first.' : 'No stocks matching filters.'}
         </div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/20">
           <table className="w-full text-sm">
             <thead className="bg-slate-800/50 text-slate-400 font-black text-[10px]">
-              <tr><th className="text-left py-4 px-6 uppercase">Symbol</th><th className="text-left py-4 px-6 uppercase">Sector</th><th className="text-right py-4 px-6 uppercase">Score</th><th className="text-right py-4 px-6 uppercase">vs Sep'24</th><th className="text-left py-4 px-6 uppercase">Status</th><th className="text-right py-4 px-6 uppercase">Quality</th><th className="text-left py-4 px-6 uppercase">Signal</th></tr>
+              <tr>
+                <th className="text-left py-4 px-6 uppercase">Symbol</th>
+                <th className="text-left py-4 px-6 uppercase">Sector</th>
+                <th className="text-right py-4 px-6 uppercase">Storm Score</th>
+                <th className="text-right py-4 px-6 uppercase">vs Sep 24</th>
+                <th className="text-left py-4 px-6 uppercase">Status</th>
+                <th className="text-right py-4 px-6 uppercase">Quality</th>
+                <th className="text-left py-4 px-6 uppercase">Signal</th>
+              </tr>
             </thead>
             <tbody>
               {filtered.map(s => (
-                <tr key={s.symbol} onClick={() => { const newSel = selected?.symbol === s.symbol ? null : s; setSelected(newSel); if(newSel) window.dispatchEvent(new CustomEvent('ai-insight-open', {detail: newSel})); }} className={`border-b border-slate-800/50 cursor-pointer hover:bg-indigo-500/10 transition-colors ${selected?.symbol === s.symbol ? 'bg-indigo-500/20' : ''}`}>
+                <tr key={s.symbol}
+                  onClick={() => { const ns = selected?.symbol === s.symbol ? null : s; setSelected(ns); if(ns) window.dispatchEvent(new CustomEvent('ai-insight-open', {detail: ns})); }}
+                  className={'border-b border-slate-800/50 cursor-pointer hover:bg-indigo-500/10 transition-colors ' + (selected?.symbol === s.symbol ? 'bg-indigo-500/20' : '')}>
                   <td className="py-4 px-6"><div className="font-bold text-white">{s.symbol}</div><div className="text-slate-500 text-[10px] font-medium">{s.name}</div></td>
                   <td className="py-4 px-6 text-slate-400 text-xs">{s.sector}</td>
                   <td className="py-4 px-6 text-right font-black text-blue-400">{s.storm_score}</td>
-                  <td className={`py-4 px-6 text-right font-black ${ (s.recovery_gap_pct ?? 0) < 0 ? 'text-red-400' : 'text-emerald-400' }`}>{s.recovery_gap_pct != null ? `${s.recovery_gap_pct > 0 ? '+' : ''}${s.recovery_gap_pct.toFixed(1)}%` : '—'}</td>
-                  <td className="py-4 px-6"><span className={`px-2 py-1 rounded-md text-[9px] font-black border ${s.status.color}`}>{s.status.label.toUpperCase()}</span></td>
+                  <td className={'py-4 px-6 text-right font-black ' + ((s.recovery_gap_pct ?? 0) < 0 ? 'text-red-400' : 'text-emerald-400')}>
+                    {s.recovery_gap_pct != null ? (s.recovery_gap_pct > 0 ? '+' : '') + s.recovery_gap_pct.toFixed(1) + '%' : 'N/A'}
+                  </td>
+                  <td className="py-4 px-6"><span className={'px-2 py-1 rounded-md text-[9px] font-black border ' + s.status.color}>{s.status.label.toUpperCase()}</span></td>
                   <td className="py-4 px-6 text-right text-slate-300 font-bold">{s.quality_score_pct}%</td>
-                  <td className="py-4 px-6">{s.signal ? <span className="px-2 py-1 rounded text-[10px] font-black bg-emerald-500/20 text-emerald-400">{s.signal}</span> : '—'}</td>
+                  <td className="py-4 px-6">
+                    {s.signal ? <span className={'px-2 py-1 rounded text-[10px] font-black ' + signalBadge(s.signal)}>{s.signal}</span> : 'N/A'}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -149,13 +174,41 @@ export default function GlobalStormVictims() {
       {selected && (
         <div className="bg-slate-800/90 rounded-2xl p-6 border border-indigo-500/40 shadow-2xl">
           <div className="flex justify-between items-start mb-6">
-            <div><h3 className="font-black text-white text-2xl">{selected.symbol}</h3><p className="text-slate-400 text-xs mt-1">{selected.name} • {selected.sector}</p></div>
-            <button onClick={() => setSelected(null)} className="text-slate-500 hover:text-white text-lg">✕</button>
+            <div>
+              <h3 className="font-black text-white text-2xl">{selected.symbol}</h3>
+              <p className="text-slate-400 text-xs mt-1">{selected.name} - {selected.sector}</p>
+            </div>
+            <button onClick={() => setSelected(null)} className="text-slate-500 hover:text-white text-lg">x</button>
           </div>
-          <div className="grid grid-cols-3 gap-6">
-            <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-700/50"><div className="text-slate-500 text-[9px] uppercase font-black tracking-widest mb-1">Storm Score</div><div className="text-blue-400 font-black text-2xl">{selected.storm_score}</div></div>
-            <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-700/50"><div className="text-slate-500 text-[9px] uppercase font-black tracking-widest mb-1">vs Sep'24</div><div className={`font-black text-2xl ${selected.recovery_gap_pct < 0 ? 'text-red-400' : 'text-emerald-400'}`}>{selected.recovery_gap_pct?.toFixed(1)}%</div></div>
-            <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-700/50"><div className="text-slate-500 text-[9px] uppercase font-black tracking-widest mb-1">Status</div><div className={`font-black text-lg ${selected.status.color}`}>{selected.status.label}</div></div>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-700/50">
+              <div className="text-slate-500 text-[9px] uppercase font-black tracking-widest mb-1">Storm Score</div>
+              <div className="text-blue-400 font-black text-2xl">{selected.storm_score}</div>
+            </div>
+            <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-700/50">
+              <div className="text-slate-500 text-[9px] uppercase font-black tracking-widest mb-1">vs Sep 24</div>
+              <div className={'font-black text-2xl ' + (selected.recovery_gap_pct < 0 ? 'text-red-400' : 'text-emerald-400')}>
+                {selected.recovery_gap_pct != null ? (selected.recovery_gap_pct > 0 ? '+' : '') + selected.recovery_gap_pct.toFixed(1) + '%' : 'N/A'}
+              </div>
+            </div>
+            <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-700/50">
+              <div className="text-slate-500 text-[9px] uppercase font-black tracking-widest mb-1">Status</div>
+              <div className={'font-black text-lg ' + selected.status.color}>{selected.status.label}</div>
+            </div>
+            <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-700/50">
+              <div className="text-slate-500 text-[9px] uppercase font-black tracking-widest mb-1">Quality</div>
+              <div className="text-slate-200 font-black text-xl">{selected.quality_score_pct}%</div>
+            </div>
+            <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-700/50">
+              <div className="text-slate-500 text-[9px] uppercase font-black tracking-widest mb-1">Signal</div>
+              <div className={'font-black text-xl ' + (selected.signal === 'BUY' ? 'text-emerald-400' : selected.signal === 'HOLD' || selected.signal === 'WAIT' ? 'text-amber-400' : 'text-red-400')}>
+                {selected.signal || 'N/A'}
+              </div>
+            </div>
+            <div className="p-4 bg-slate-900/50 rounded-xl border border-slate-700/50">
+              <div className="text-slate-500 text-[9px] uppercase font-black tracking-widest mb-1">Signal Score</div>
+              <div className="text-slate-200 font-black text-xl">{selected.signal_score != null ? selected.signal_score + '/100' : 'N/A'}</div>
+            </div>
           </div>
         </div>
       )}
