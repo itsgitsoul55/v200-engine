@@ -46,7 +46,7 @@ export default function SectorRotation() {
       avgGap: parseFloat((arr.reduce((a, b) => a + (b.recovery_gap_pct ?? 0), 0) / arr.length).toFixed(1)),
       avgSignal: Math.round(arr.reduce((a, b) => a + (b.signal_score ?? 0), 0) / arr.length),
       buyCount: arr.filter(s => s.signal === 'BUY').length,
-      watchCount: arr.filter(s => s.signal === 'WATCH').length,
+      watchCount: arr.filter(s => s.signal === 'WAIT' || s.signal === 'HOLD' || s.signal === 'WATCH').length,
       avoidCount: arr.filter(s => s.signal === 'AVOID').length,
       top5: [...arr].sort((a, b) => (b.signal_score ?? 0) - (a.signal_score ?? 0)).slice(0, 5)
     }))
@@ -54,7 +54,7 @@ export default function SectorRotation() {
 
   const qualColor = q => q >= 83 ? 'text-green-400' : q >= 67 ? 'text-yellow-400' : 'text-red-400';
   const gapColor = g => g <= -20 ? 'text-red-400' : g <= -5 ? 'text-orange-400' : g >= 5 ? 'text-green-400' : 'text-slate-300';
-  const signalBg = s => s === 'BUY' ? 'bg-green-900/50 text-green-300' : s === 'WATCH' ? 'bg-yellow-900/50 text-yellow-300' : 'bg-red-900/50 text-red-300';
+  const signalBg = sig => { if (sig === 'BUY') return 'bg-green-900/50 text-green-300'; if (sig === 'HOLD' || sig === 'WAIT' || sig === 'WATCH') return 'bg-yellow-900/50 text-yellow-300'; if (sig === 'AVOID') return 'bg-red-900/50 text-red-300'; return 'bg-slate-700 text-slate-300'; };
 
   return (
     <div className="p-4 space-y-4">
