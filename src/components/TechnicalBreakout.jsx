@@ -72,7 +72,7 @@ export default function TechnicalBreakout() {
           {sectors.map(s => <option key={s}>{s}</option>)}
         </select>
         <select value={signalFilter} onChange={e => setSignalFilter(e.target.value)} className="bg-slate-700 text-slate-200 text-sm px-2 py-1 rounded">
-          {['All', 'BUY', 'WATCH', 'AVOID'].map(s => <option key={s}>{s}</option>)}
+          {['All', 'BUY', 'HOLD', 'WAIT', 'AVOID'].map(s => <option key={s}>{s}</option>)}
         </select>
         <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="bg-slate-700 text-slate-200 text-sm px-2 py-1 rounded">
           <option value="signal_score">Sort: Signal</option>
@@ -136,7 +136,7 @@ export default function TechnicalBreakout() {
           <h3 className="text-lg font-bold text-slate-100">{selected.symbol} — Technical Analysis</h3>
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div><span className="text-slate-400">Signal Score:</span> <span className="text-amber-300 font-bold">{selected.signal_score ?? '—'}/100</span></div>
-            <div><span className="text-slate-400">Signal:</span> <span className={selected.signal === 'BUY' ? 'text-green-400' : selected.signal === 'WATCH' ? 'text-yellow-400' : 'text-red-400'}>{selected.signal}</span></div>
+            <div><span className="text-slate-400">Signal:</span> <span className={selected.signal === 'BUY' ? 'text-green-400' : selected.signal === 'WATCH' || selected.signal === 'HOLD' || selected.signal === 'WAIT' ? 'text-amber-400' : 'text-red-400'}>{selected.signal}</span></div>
             <div><span className="text-slate-400">Stage 2:</span> <span className={selected.stage2 ? 'text-green-400' : 'text-red-400'}>{selected.stage2 ? 'Yes' : 'No'}</span></div>
             <div><span className="text-slate-400">Delivery Spike:</span> <span className={selected.delivery_spike ? 'text-green-400' : 'text-red-400'}>{selected.delivery_spike ? 'Yes' : 'No'}</span></div>
             <div><span className="text-slate-400">Current Price:</span> <span className="text-slate-200">{selected.current_price ? `₹${selected.current_price.toLocaleString()}` : '—'}</span></div>
