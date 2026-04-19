@@ -137,7 +137,7 @@ export default function QualityCompounder() {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {criteria.map(c => (
               <div key={c.key} className={'flex items-center gap-2 text-sm px-2 py-1.5 rounded ' + (selected[c.key] ? 'bg-green-900/30 text-green-300' : 'bg-red-900/30 text-red-300')}>
-                <span>{selected[c.key] ? 'ok' : 'no'}</span>
+                <span>{selected[c.key] ? 'v' : 'x'}</span>
                 <span>{c.label}</span>
               </div>
             ))}
@@ -148,7 +148,8 @@ export default function QualityCompounder() {
             <div><span className="text-slate-400">Rev CAGR:</span> <span className="text-slate-200">{selected.rev_cagr_3yr != null ? selected.rev_cagr_3yr.toFixed(1) + '%' : '0%'}</span></div>
             <div><span className="text-slate-400">Promoter:</span> <span className="text-slate-200">{selected.promoter_pct != null ? selected.promoter_pct.toFixed(1) + '%' : '0%'}</span></div>
             <div><span className="text-slate-400">Pledge:</span> <span className="text-slate-200">{selected.pledge_pct != null ? selected.pledge_pct.toFixed(1) + '%' : '0%'}</span></div>
-            <div><span className="text-slate-400">Profit Yrs:</span> <span className="text-slate-200">{selected.profitable_yrs ?? 0}/7</span></div>
+            <div><span className="text-slate-400">Profit Yrs:</span> <span className="text-slate-200">{selected.profitable_yrs ?? 0} yrs</span></div>
+            <div><span className="text-slate-400">Signal:</span> <span className={(selected.signal === 'BUY' ? 'text-green-400' : selected.signal === 'WAIT' || selected.signal === 'HOLD' ? 'text-amber-400' : 'text-red-400') + ' font-bold'}>{selected.signal || 'N/A'}</span></div>
           </div>
         </div>
       )}
