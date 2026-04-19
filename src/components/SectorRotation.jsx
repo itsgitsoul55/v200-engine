@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
+// DB stores quality_score as 0-6 count; normalize to 0-100 for display
+function normQ(raw) {
+  if (raw == null) return 0;
+  if (raw <= 6) return Math.round(raw / 6 * 100);
+  return raw;
+}
+
 export default function SectorRotation() {
   const [stocks, setStocks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16,7 +23,7 @@ export default function SectorRotation() {
           .select('*')
           .eq('in_v200', true);
         if (error) throw error;
-        setStocks(data || []);
+        setStocks((data || []).map(s => ({ ...s, quality_score: normQ(s.quality_score) })));
       } catch { setStocks([]); }
       setLoading(false);
     }
